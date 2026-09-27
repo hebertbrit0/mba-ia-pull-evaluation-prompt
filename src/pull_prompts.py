@@ -29,23 +29,70 @@ DICAS DE IMPLEMENTAÇÃO:
 - Use `save_yaml` de utils.py para gravar o resultado no arquivo .yml.
 """
 
-import os
 import sys
+from datetime import date
 from pathlib import Path
+from typing import Any, Dict
 from dotenv import load_dotenv
 from langsmith import Client
 from utils import save_yaml, check_env_vars, print_section_header
 
 load_dotenv()
 
+PROMPT_ID = "leonanluppi/bug_to_user_story_v1"
+OUTPUT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "bug_to_user_story_v1.yml"
 
-def pull_prompts_from_langsmith():
-    ...
+
+def pull_prompts_from_langsmith() -> Dict[str, Any]:
+    """
+    Faz pull do prompt semente do desafio no LangSmith Hub.
+
+    Returns:
+        Dicionário no formato esperado por prompts/bug_to_user_story_v1.yml
+    """
+    client = Client()
+    prompt = client.pull_prompt(PROMPT_ID, dangerously_pull_public_prompt=True)
+
+    system_prompt = ""
+    user_prompt = ""
+    for message in prompt.messages:
+        role = message.__class__.__name__.lower()
+        template = message.prompt.template
+        if "system" in role:
+            system_prompt = template
+        elif "human" in role:
+            user_prompt = template
+
+    return {
+        "bug_to_user_story_v1": {
+            "description": "Prompt para converter relatos de bugs em User Stories",
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "version": "v1",
+            "created_at": date.today().isoformat(),
+            "tags": ["bug-analysis", "user-story", "product-management"],
+        }
+    }
 
 
 def main():
     """Função principal"""
-    ...
+    print_section_header("Pull de Prompts do LangSmith")
+
+    if not check_env_vars(["LANGSMITH_API_KEY"]):
+        return 1
+
+    try:
+        prompt_data = pull_prompts_from_langsmith()
+    except Exception as e:
+        print(f"❌ Erro ao fazer pull do prompt no LangSmith: {e}")
+        return 1
+
+    if not save_yaml(prompt_data, str(OUTPUT_PATH)):
+        return 1
+
+    print(f"✅ Prompt salvo em {OUTPUT_PATH}")
+    return 0
 
 
 if __name__ == "__main__":
