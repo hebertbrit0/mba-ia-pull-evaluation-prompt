@@ -25,7 +25,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from langsmith import Client
 from langchain_core.prompts import ChatPromptTemplate
-from utils import check_env_vars, format_score, print_section_header, get_llm as get_configured_llm
+from utils import check_env_vars, format_score, print_section_header, get_llm as get_configured_llm, invoke_with_retry
 from metrics import evaluate_f1_score, evaluate_clarity, evaluate_precision
 
 load_dotenv()
@@ -157,7 +157,7 @@ def build_target(prompt_template: ChatPromptTemplate, llm: Any):
     chain = prompt_template | llm
 
     def target(inputs: dict) -> dict:
-        response = chain.invoke(inputs)
+        response = invoke_with_retry(chain, inputs)
         return {"answer": response.content}
 
     return target

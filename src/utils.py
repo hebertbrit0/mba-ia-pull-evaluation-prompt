@@ -3,6 +3,8 @@ Funções auxiliares para o projeto de otimização de prompts.
 """
 
 import os
+import re
+import time
 import yaml
 import json
 from typing import Dict, Any, Optional
@@ -250,3 +252,37 @@ def get_eval_llm(temperature: float = 0.0):
     """
     eval_model = os.getenv('EVAL_MODEL', '')
     return get_llm(model=eval_model, temperature=temperature)
+
+
+def invoke_with_retry(runnable, input_value, max_retries: int = 5, initial_wait: float = 2.0):
+    """
+    Invoca um runnable (LLM ou chain) com retry/backoff para erros de rate limit (HTTP 429).
+
+    Alguns providers (ex: OpenAI) impõem limites de tokens/requisições por minuto.
+    Em vez de falhar e zerar as métricas, aguarda o tempo sugerido pelo provider
+    (ou um backoff exponencial) e tenta novamente.
+
+    Args:
+        runnable: Objeto com método .invoke(input_value)
+        input_value: Valor a ser passado para .invoke()
+        max_retries: Número máximo de tentativas
+        initial_wait: Espera inicial (segundos) usada no backoff exponencial
+
+    Returns:
+        Resultado de runnable.invoke(input_value)
+    """
+    for attempt in range(max_retries):
+        try:
+            return runnable.invoke(input_value)
+        except Exception as e:
+            message = str(e)
+            is_rate_limit = "429" in message or "rate_limit" in message.lower()
+
+            if not is_rate_limit or attempt == max_retries - 1:
+                raise
+
+            match = re.search(r"try again in ([\d.]+)s", message, re.IGNORECASE)
+            wait_time = float(match.group(1)) + 0.5 if match else initial_wait * (2 ** attempt)
+
+            print(f"      ⏳ Rate limit atingido, aguardando {wait_time:.1f}s (tentativa {attempt + 1}/{max_retries})...")
+            time.sleep(wait_time)
